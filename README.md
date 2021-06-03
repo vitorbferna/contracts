@@ -1,0 +1,1 @@
+Join us at JackRaffle.army and claim your $BNB!
