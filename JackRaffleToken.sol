@@ -818,136 +818,6 @@ interface IPancakeRouter02 is IPancakeRouter01 {
     ) external;
 }
 
-
-// File: contracts/protocols/bep/Utils.sol
-
-pragma solidity >=0.6.8;
-
-
-library Utils {
-    using SafeMath for uint256;
-
-    function random(
-        uint256 from,
-        uint256 to,
-        uint256 salty
-    ) private view returns (uint256) {
-        uint256 seed =
-        uint256(
-            keccak256(
-                abi.encodePacked(
-                    block.timestamp +
-                    block.difficulty +
-                    ((uint256(keccak256(abi.encodePacked(block.coinbase)))) / (now)) +
-                    block.gaslimit +
-                    ((uint256(keccak256(abi.encodePacked(msg.sender)))) / (now)) +
-                    block.number +
-                    salty
-                )
-            )
-        );
-        return seed.mod(to - from) + from;
-    }
-
-    function calculateBNBReward(
-        uint256 _tTotal,
-        uint256 currentBalance,
-        uint256 currentBNBPool,
-        uint256 totalSupply,
-        address ofAddress
-    ) public view returns (uint256) {
-        uint256 bnbPool = currentBNBPool;
-        uint256 multiplier = 100;
-
-        // now calculate reward
-        uint256 reward = bnbPool.mul(multiplier).mul(currentBalance).div(100).div(totalSupply);
-        return reward;
-    }
-
-    function calculateTopUpClaim(
-        uint256 currentRecipientBalance,
-        uint256 basedRewardCycleBlock,
-        uint256 threshHoldTopUpRate,
-        uint256 amount
-    ) public view returns (uint256) {
-        if (currentRecipientBalance == 0) {
-            return block.timestamp + basedRewardCycleBlock;
-        } else {
-            uint256 rate = amount.mul(100).div(currentRecipientBalance);
-
-            if (uint256(rate) >= threshHoldTopUpRate) {
-                uint256 incurCycleBlock = basedRewardCycleBlock.mul(uint256(rate)).div(100);
-
-                if (incurCycleBlock >= basedRewardCycleBlock) {
-                    incurCycleBlock = basedRewardCycleBlock;
-                }
-
-                return incurCycleBlock;
-            }
-
-            return 0;
-        }
-    }
-
-    function swapTokensForEth(address routerAddress, uint256 tokenAmount) public {
-        IPancakeRouter02 pancakeRouter = IPancakeRouter02(routerAddress);
-
-        // generate the pancake pair path of token -> weth
-        address[] memory path = new address[](2);
-        path[0] = address(this);
-        path[1] = pancakeRouter.WETH();
-
-        // make the swap
-        pancakeRouter.swapExactTokensForETHSupportingFeeOnTransferTokens(
-            tokenAmount,
-            0, // accept any amount of BNB
-            path,
-            address(this),
-            block.timestamp
-        );
-    }
-
-    function swapETHForTokens(
-        address routerAddress,
-        address recipient,
-        uint256 ethAmount
-    ) public {
-        IPancakeRouter02 pancakeRouter = IPancakeRouter02(routerAddress);
-
-        // generate the pancake pair path of token -> weth
-        address[] memory path = new address[](2);
-        path[0] = pancakeRouter.WETH();
-        path[1] = address(this);
-
-        // make the swap
-        pancakeRouter.swapExactETHForTokensSupportingFeeOnTransferTokens{ value: ethAmount }(
-            0, // accept any amount of BNB
-            path,
-            address(recipient),
-            block.timestamp + 360
-        );
-    }
-
-    function addLiquidity(
-        address routerAddress,
-        address owner,
-        uint256 tokenAmount,
-        uint256 ethAmount
-    ) public {
-        IPancakeRouter02 pancakeRouter = IPancakeRouter02(routerAddress);
-
-        // add the liquidity
-        pancakeRouter.addLiquidityETH{ value: ethAmount }(
-            address(this),
-            tokenAmount,
-            0, // slippage is unavoidable
-            0, // slippage is unavoidable
-            owner,
-            block.timestamp + 360
-        );
-    }
-}
-
 // File: contracts/protocols/bep/ReentrancyGuard.sol
 
 pragma solidity >=0.6.8;
@@ -1017,7 +887,6 @@ abstract contract ReentrancyGuard {
 }
 
 pragma solidity >=0.6.8;
-pragma experimental ABIEncoderV2;
 
 contract JackRaffle is Context, IBEP20, Ownable, ReentrancyGuard {
     using SafeMath for uint256;
@@ -1064,10 +933,10 @@ contract JackRaffle is Context, IBEP20, Ownable, ReentrancyGuard {
         inSwapAndLiquify = false;
     }
 
-    constructor(address payable routerAddress) public {
+    constructor () public {
         _rOwned[_msgSender()] = _rTotal;
 
-        IPancakeRouter02 _pancakeRouter = IPancakeRouter02(routerAddress);
+        IPancakeRouter02 _pancakeRouter = IPancakeRouter02(0x10ED43C718714eb63d5aA57B78B54704E256024E); 
         // Create a pancake pair for this new token
         pancakePair = IPancakeFactory(_pancakeRouter.factory()).createPair(
             address(this),
@@ -1199,7 +1068,6 @@ contract JackRaffle is Context, IBEP20, Ownable, ReentrancyGuard {
     }
 
     function excludeFromReward(address account) public onlyOwner() {
-        // require(account != 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D, 'We can not exclude Pancake router.');
         require(!_isExcluded[account], "Account is already excluded");
         if (_rOwned[account] > 0) {
             _tOwned[account] = tokenFromReflection(_rOwned[account]);
@@ -1507,27 +1375,46 @@ contract JackRaffle is Context, IBEP20, Ownable, ReentrancyGuard {
     }
 
     // Jack Raffle team lets goooo
-    uint256 public rewardCycleBlock = 7 days;
+    uint256 public rewardCycleBlock = 1 days;
     uint256 public easyRewardCycleBlock = 1 days;
-    uint256 public threshHoldTopUpRate = 2; // 2 percent
-    uint256 public _maxTxAmount = _tTotal; // should be 0.5% percent per transaction, will be set again at activateContract() function
+    uint256 public threshHoldTopUpRate = 25; // 25 percent
+    uint256 public _maxTxAmount = _tTotal; // should be 0.05% percent per transaction, will be set again at activateContract() function
     uint256 public disruptiveCoverageFee = 2 ether; // antiwhale - charge 2 bnb gas fee
     mapping(address => uint256) public nextAvailableClaimDate;
     bool public swapAndLiquifyEnabled = false; // should be true
     uint256 public disruptiveTransferEnabledFrom = 0;
     uint256 public disableEasyRewardFrom = 0;
 
-    uint256 public _taxFee = 2;
+    uint256 public _taxFee = 1; // 1% Redistribution
     uint256 private _previousTaxFee = _taxFee;
 
-    uint256 public _liquidityFee = 8; // 4% will be added pool, 4% will be converted to BNB, 2% of those 4% BNB will be sent to raffle wallet
+    uint256 public _liquidityFee = 9; // 3% will be added LP, 4% will be converted to BNB and redistributed, 2% converted to BNB and added to raffle wallet
     uint256 private _previousLiquidityFee = _liquidityFee;
     uint256 public rewardThreshold = 1 ether;
+    uint256 public _bnbPart = 5;
+    uint256 public _totalLiqParts = 6;
+    uint256 public _bnbLiqAlloc = 3;
+    uint256 public _bnbTotalParts = 3;
+    uint256 public _bnbUserParts = 2;
 
-    uint256 minTokenNumberToSell = _tTotal.mul(1).div(10000).div(10); // 0.001% max tx amount will trigger swap and add liquidity
+    uint256 public minTokenNumberToSell = _tTotal.mul(1).div(10000).div(10); // 0.001% max tx amount will trigger swap and add liquidity
 
     function setMaxTxPercent(uint256 maxTxPercent) public onlyOwner() {
         _maxTxAmount = _tTotal.mul(maxTxPercent).div(10000);
+    }
+    function setMinTokenPercToSell(uint256 minPerc) public onlyOwner() {
+        minTokenNumberToSell = _tTotal.mul(1).div(minPerc).div(10);
+    }
+
+    function setLiquidityParts(uint256 bnbPart, uint256 totalLidParts, uint256 bnbLiqAlloc) public onlyOwner() {
+        _bnbPart = bnbPart;
+        _totalLiqParts = totalLidParts;
+        _bnbLiqAlloc = bnbLiqAlloc;
+    }
+
+    function setBnbParts(uint256 bnbTotalParts, uint256 bnbUserParts) public onlyOwner() {
+        _bnbTotalParts = bnbTotalParts;
+        _bnbUserParts = bnbUserParts;
     }
 
     //set this address after you publish the contract
@@ -1540,21 +1427,22 @@ contract JackRaffle is Context, IBEP20, Ownable, ReentrancyGuard {
     }
 
     function calculateBNBReward(address ofAddress) public view returns (uint256) {
-        uint256 totalSupply =
-        uint256(_tTotal)
-        .sub(balanceOf(address(0)))
-        .sub(balanceOf(0x000000000000000000000000000000000000dEaD)) // exclude burned wallet
-        .sub(balanceOf(address(pancakePair)));
+        uint256 _totalSupply = uint256(_tTotal).sub(balanceOf(address(0))).sub(balanceOf(0x000000000000000000000000000000000000dEaD)).sub(balanceOf(address(pancakePair)));
         // exclude liquidity wallet
 
-        return
-        Utils.calculateBNBReward(
-            _tTotal,
+        return _calculateBNBReward(
             balanceOf(address(ofAddress)),
             address(this).balance,
-            totalSupply,
-            ofAddress
+            _totalSupply
         );
+    }
+
+    function _calculateBNBReward(
+        uint256 currentBalance,
+        uint256 currentBNBPool,
+        uint256 _totalSupply
+    ) public pure returns (uint256) {
+        return currentBNBPool.mul(currentBalance).div(_totalSupply);
     }
 
     function getRewardCycleBlock() public view returns (uint256) {
@@ -1563,18 +1451,14 @@ contract JackRaffle is Context, IBEP20, Ownable, ReentrancyGuard {
     }
 
     function claimBNBReward() public isHuman nonReentrant {
-        require(
-            nextAvailableClaimDate[msg.sender] <= block.timestamp,
-            "Error: next available not reached"
-        );
-        require(balanceOf(msg.sender) >= 0, "Error: must own the token to claim reward");
+        require(nextAvailableClaimDate[msg.sender] <= block.timestamp, "Error: next available not reached");
+        require(balanceOf(msg.sender) >= 0, "Error: must own JACKR to claim reward");
 
         uint256 reward = calculateBNBReward(msg.sender);
 
-        // reward threshold
+        // reward threshold, buyback and burn 1/5th if higher
         if (reward >= rewardThreshold) {
-            Utils.swapETHForTokens(
-                address(pancakeRouter),
+            _swapETHForTokens(
                 address(0x000000000000000000000000000000000000dEaD),
                 reward.div(5)
             );
@@ -1585,11 +1469,15 @@ contract JackRaffle is Context, IBEP20, Ownable, ReentrancyGuard {
         nextAvailableClaimDate[msg.sender] = block.timestamp + getRewardCycleBlock();
         emit ClaimBNBSuccessfully(msg.sender, reward, nextAvailableClaimDate[msg.sender]);
 
-        //send half of it to raffle fund
-        (bool sent, ) = address(raffleWallet).call{ value: reward.div(2) }("");
-        require(sent, "Error: Cannot withdraw reward");
+        uint256 raffleMult = _bnbTotalParts - _bnbUserParts;
+        bool sent = false;
+        if (raffleMult > 0) {
+            //send 1/3rd of it to raffle fund (2% BNB to raffle, 4% to user)
+            (sent, ) = address(raffleWallet).call{ value: reward.mul(raffleMult).div(_bnbTotalParts) }("");
+            require(sent, "Error: Cannot withdraw reward");
+        }
 
-        (sent, ) = address(msg.sender).call{ value: reward.div(2) }("");
+        (sent, ) = address(msg.sender).call{ value: reward.mul(_bnbUserParts).div(_bnbTotalParts) }("");
         require(sent, "Error: Cannot withdraw reward");
     }
 
@@ -1597,12 +1485,13 @@ contract JackRaffle is Context, IBEP20, Ownable, ReentrancyGuard {
         uint256 currentRecipientBalance = balanceOf(recipient);
         uint256 basedRewardCycleBlock = getRewardCycleBlock();
 
-        nextAvailableClaimDate[recipient] =
-        nextAvailableClaimDate[recipient] +
-        Utils.calculateTopUpClaim(
+        if (nextAvailableClaimDate[recipient] == 0) {
+            nextAvailableClaimDate[recipient] = block.timestamp;
+        }
+
+        nextAvailableClaimDate[recipient] = nextAvailableClaimDate[recipient] + _calculateTopUpClaim(
             currentRecipientBalance,
             basedRewardCycleBlock,
-            threshHoldTopUpRate,
             amount
         );
     }
@@ -1651,40 +1540,34 @@ contract JackRaffle is Context, IBEP20, Ownable, ReentrancyGuard {
             // only sell for minTokenNumberToSell, decouple from _maxTxAmount
             contractTokenBalance = minTokenNumberToSell;
 
-            // add liquidity
-            // split the contract balance into 3 pieces
-            uint256 pooledBNB = contractTokenBalance.div(2);
-            uint256 piece = contractTokenBalance.sub(pooledBNB).div(2);
-            uint256 otherPiece = contractTokenBalance.sub(piece);
-
-            uint256 tokenAmountToBeSwapped = pooledBNB.add(piece);
+            uint256 tokenAmountToBeSwapped = contractTokenBalance.mul(_bnbPart).div(_totalLiqParts);
+            uint256 tokenAmountToLiquidity = contractTokenBalance - tokenAmountToBeSwapped;
 
             uint256 initialBalance = address(this).balance;
 
             // now is to lock into staking pool
-            Utils.swapTokensForEth(address(pancakeRouter), tokenAmountToBeSwapped);
+            _swapTokensForEth(tokenAmountToBeSwapped);
 
             // how much BNB did we just swap into?
-
             // capture the contract's current BNB balance.
             // this is so that we can capture exactly the amount of BNB that the
             // swap creates, and not make the liquidity event include any BNB that
             // has been manually sent to the contract
             uint256 deltaBalance = address(this).balance.sub(initialBalance);
 
-            uint256 bnbToBeAddedToLiquidity = deltaBalance.div(3);
+            uint256 bnbToBeAddedToLiquidity = deltaBalance.div(_bnbLiqAlloc);
 
             // add liquidity to pancake
-            Utils.addLiquidity(address(pancakeRouter), owner(), otherPiece, bnbToBeAddedToLiquidity);
+            _addLiquidity(owner(), tokenAmountToLiquidity, bnbToBeAddedToLiquidity);
 
-            emit SwapAndLiquify(piece, deltaBalance, otherPiece);
+            emit SwapAndLiquify(tokenAmountToLiquidity, deltaBalance, tokenAmountToLiquidity);
         }
     }
 
     function activateContract() public onlyOwner {
         // reward claim
         disableEasyRewardFrom = block.timestamp + 1 weeks;
-        rewardCycleBlock = 7 days;
+        rewardCycleBlock = 1 days;
         easyRewardCycleBlock = 1 days;
 
         // protocol
@@ -1695,5 +1578,87 @@ contract JackRaffle is Context, IBEP20, Ownable, ReentrancyGuard {
 
         // approve contract
         _approve(address(this), address(pancakeRouter), 2**256 - 1);
+    }    
+    
+    function changeThreshHoldTopUpRate(uint256 _newrate)public onlyOwner {        
+         threshHoldTopUpRate = _newrate; 
+    }
+    
+    function changeRewardCycleBlock(uint256 newcycle) public onlyOwner {          
+      rewardCycleBlock = newcycle;  
+    }   
+    
+
+    function _calculateTopUpClaim(
+        uint256 currentRecipientBalance,
+        uint256 basedRewardCycleBlock,
+        uint256 amount
+    ) public view returns (uint256) {
+        uint256 rate = 100;
+        if (currentRecipientBalance > 0) {
+            rate = amount.mul(100).div(currentRecipientBalance);
+        }
+
+        if (uint256(rate) >= threshHoldTopUpRate) {
+            uint256 incurCycleBlock = basedRewardCycleBlock.mul(uint256(rate)).div(100);
+
+            if (incurCycleBlock >= basedRewardCycleBlock) {
+                incurCycleBlock = basedRewardCycleBlock;
+            }
+
+            return incurCycleBlock;
+        }
+
+        return 0;
+    } 
+
+    function _swapTokensForEth(uint256 tokenAmount) public {
+        // generate the pancake pair path of token -> weth
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = pancakeRouter.WETH();
+
+        // make the swap
+        pancakeRouter.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            tokenAmount,
+            0, // accept any amount of BNB
+            path,
+            address(this),
+            block.timestamp
+        );
+    }
+
+    function _swapETHForTokens(
+        address recipient,
+        uint256 ethAmount
+    ) public {
+        // generate the pancake pair path of token -> weth
+        address[] memory path = new address[](2);
+        path[0] = pancakeRouter.WETH();
+        path[1] = address(this);
+
+        // make the swap
+        pancakeRouter.swapExactETHForTokensSupportingFeeOnTransferTokens{value : ethAmount}(
+            0, // accept any amount of BNB
+            path,
+            address(recipient),
+            block.timestamp + 360
+        );
+    }
+
+    function _addLiquidity(
+        address owner,
+        uint256 tokenAmount,
+        uint256 ethAmount
+    ) public {
+        // add the liquidity
+        pancakeRouter.addLiquidityETH{value : ethAmount}(
+            address(this),
+            tokenAmount,
+            0, // slippage is unavoidable
+            0, // slippage is unavoidable
+            owner,
+            block.timestamp + 360
+        );
     }
 }
